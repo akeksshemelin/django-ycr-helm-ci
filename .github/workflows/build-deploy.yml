@@ -48,11 +48,20 @@ jobs:
           which helm || (curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash)
           which yc || (curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash && echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH)
 
-      - name: Use local kubeconfig
+      # <-- фикс: экспортируем KUBECONFIG в ЭТОМ ЖЕ шаге; если файла нет, используем секрет
+      - name: Use kubeconfig
         run: |
-          test -f "$HOME/kubeconfig" || { echo "no kubeconfig at ~/kubeconfig"; exit 1; }
-          echo "KUBECONFIG=$HOME/kubeconfig" >> $GITHUB_ENV
+          if [ -f "$HOME/kubeconfig" ]; then
+            echo "Using local kubeconfig at $HOME/kubeconfig"
+            export KUBECONFIG="$HOME/kubeconfig"
+          else
+            echo "Local kubeconfig not found, using secret KUBE_CONFIG_B64"
+            echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 -d > kubeconfig
+            export KUBECONFIG="$PWD/kubeconfig"
+          fi
+          kubectl cluster-info
           kubectl get nodes
+        shell: bash
 
       - name: Configure yc SA key (from base64)
         run: |
