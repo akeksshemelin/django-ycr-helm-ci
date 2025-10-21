@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.app.name }}
+spec:
+  replicas: {{ .Values.app.replicas }}
+  selector: { matchLabels: { app: {{ .Values.app.name }} } }
+  template:
+    metadata: { labels: { app: {{ .Values.app.name }} } }
+    spec:
+      imagePullSecrets:
+      - name: {{ index .Values.image.imagePullSecrets 0 }}
+      containers:
+      - name: web
+        image: "{{ .Values.image.registry }}/{{ .Values.image.repo }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports: [{ containerPort: {{ .Values.app.port }} }]
+        envFrom:
+        - configMapRef: { name: app-env }
+        - secretRef: { name: db-secret }
+        command: ["sh","-c"]
+        args:
+          - python manage.py migrate &&
+            python manage.py collectstatic --noinput &&
+            gunicorn app.wsgi:application --bind 0.0.0.0:{{ .Values.app.port }}

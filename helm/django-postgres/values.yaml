@@ -1,0 +1,28 @@
+image:
+  registry: cr.yandex
+  repo: crp1vfo6rgj44k1fbvmd/django-app
+  tag: "latest"
+  pullPolicy: IfNotPresent
+  imagePullSecrets: [ycr-pull]
+
+app:
+  name: django
+  replicas: 2
+  port: 8000
+  env:
+    DJANGO_SETTINGS_MODULE: "app.settings"
+    DB_HOST: "postgres"
+    DB_PORT: "5432"
+    DB_NAME: "appdb"
+    DB_USER: "appuser"
+    DB_SSLMODE: "disable"
+
+db:
+  name: appdb
+  user: appuser
+  password: "changeme"
+  storage: 5Gi
+
+service:
+  type: NodePort
+  nodePort: 30080
