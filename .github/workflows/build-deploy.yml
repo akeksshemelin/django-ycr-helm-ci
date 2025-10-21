@@ -48,26 +48,28 @@ jobs:
           which helm || (curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash)
           which yc || (curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash && echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH)
 
-      # УСТАНАВЛИВАЕМ KUBECONFIG ДЛЯ ВСЕХ ДАЛЬНЕЙШИХ ШАГОВ
-      - name: Prepare kubeconfig (persist to $GITHUB_ENV)
+      # Подготовим kubeconfig: берём локальный, иначе секрет; кладём в рабочую папку и используем --kubeconfig
+      - name: Prepare kubeconfig (persist + sanity check)
         run: |
-          # пробуем локальный kubeconfig пользователя ubuntu
+          set -e
           if [ -f "/home/ubuntu/kubeconfig" ]; then
-            K="/home/ubuntu/kubeconfig"
-            echo "Using /home/ubuntu/kubeconfig"
+            SRC="/home/ubuntu/kubeconfig"
+            echo "Using local kubeconfig: $SRC"
           elif [ -f "$HOME/kubeconfig" ]; then
-            K="$HOME/kubeconfig"
-            echo "Using $HOME/kubeconfig"
+            SRC="$HOME/kubeconfig"
+            echo "Using local kubeconfig: $SRC"
           else
-            echo "Local kubeconfig not found, decode secret"
+            echo "Local kubeconfig not found, decoding secret..."
             echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 -d > kubeconfig
-            K="$PWD/kubeconfig"
+            SRC="$PWD/kubeconfig"
           fi
+          cp -f "$SRC" "$PWD/kubeconfig"
+          chmod 600 "$PWD/kubeconfig"
           # делаем доступным для следующих шагов
-          echo "KUBECONFIG=$K" >> $GITHUB_ENV
-          # sanity-check
-          kubectl config view >/dev/null
-          kubectl get nodes
+          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+          # sanity-check ИМЕННО с явным --kubeconfig
+          kubectl --kubeconfig "$PWD/kubeconfig" config view >/dev/null
+          kubectl --kubeconfig "$PWD/kubeconfig" get nodes
 
       - name: Configure yc SA key (from base64)
         run: |
@@ -83,13 +85,14 @@ jobs:
 
       - name: Ensure namespace
         run: |
-          kubectl create ns "${{ secrets.KUBE_NAMESPACE }}" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl --kubeconfig "$KUBECONFIG" create ns "${{ secrets.KUBE_NAMESPACE }}" \
+            --dry-run=client -o yaml | kubectl --kubeconfig "$KUBECONFIG" apply -f -
 
       - name: Ensure imagePullSecret ycr-pull
         run: |
           TOKEN=$(yc iam create-token)
-          kubectl -n "${{ secrets.KUBE_NAMESPACE }}" delete secret ycr-pull --ignore-not-found
-          kubectl -n "${{ secrets.KUBE_NAMESPACE }}" create secret docker-registry ycr-pull \
+          kubectl --kubeconfig "$KUBECONFIG" -n "${{ secrets.KUBE_NAMESPACE }}" delete secret ycr-pull --ignore-not-found
+          kubectl --kubeconfig "$KUBECONFIG" -n "${{ secrets.KUBE_NAMESPACE }}" create secret docker-registry ycr-pull \
             --docker-server=cr.yandex \
             --docker-username=iam \
             --docker-password="$TOKEN" \
@@ -99,7 +102,7 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          helm upgrade --install django ./helm/django-postgres \
+          helm --kubeconfig "$KUBECONFIG" upgrade --install django ./helm/django-postgres \
             --namespace "${{ secrets.KUBE_NAMESPACE }}" \
             --set image.registry=cr.yandex \
             --set image.repo="${{ secrets.REGISTRY_ID }}/django-app" \
