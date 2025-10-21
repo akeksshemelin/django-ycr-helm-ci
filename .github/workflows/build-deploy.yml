@@ -14,19 +14,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Install yc CLI
         run: |
           curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
           echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+
       - name: Configure yc SA key
         run: |
-          echo "${{ secrets.YC_SA_KEY_JSON }}" > sa-key.json
+          printf '%s' "${{ secrets.YC_SA_KEY_JSON }}" > sa-key.json
           yc config set service-account-key sa-key.json
           yc config set token ""
+
       - name: Docker login to YCR (IAM)
         run: |
           TOKEN=$(yc iam create-token)
           echo "$TOKEN" | docker login cr.yandex -u iam --password-stdin
+
       - name: Build & Push
         env:
           TAG: ${{ github.ref_name }}
@@ -41,17 +45,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install yc CLI
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+
       - name: Setup kubectl & helm
         run: |
           sudo apt-get update && sudo apt-get install -y kubectl
           curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
       - name: Kubeconfig
         run: |
           echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 -d > kubeconfig
           echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+
       - name: Ensure namespace
         run: |
           kubectl create ns "${{ secrets.KUBE_NAMESPACE }}" --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Ensure imagePullSecret ycr-pull
         run: |
           TOKEN=$(yc iam create-token)
@@ -61,6 +74,7 @@ jobs:
             --docker-username=iam \
             --docker-password="$TOKEN" \
             --docker-email=none@example.com
+
       - name: Helm upgrade/install
         env:
           TAG: ${{ github.ref_name }}
