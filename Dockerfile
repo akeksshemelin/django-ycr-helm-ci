@@ -1,26 +1,22 @@
-FROM python:3.9-alpine
+FROM python:3.11-slim
 
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-COPY ./requirements.txt /requirements.txt
-
-# Install postgres client
-RUN apk add --update --no-cache postgresql-client
-
-# Install individual dependencies
-# so that we could avoid install extra packages
-RUN apk add --update --no-cache --virtual .tmp-build-deps \
-	gcc libc-dev linux-headers postgresql-dev
-RUN pip install -r /requirements.txt
-
-# Remove dependencies
-RUN apk del .tmp-build-deps
-re
-RUN mkdir /app
 WORKDIR /app
-COPY ./app /app
 
-# [Security] Limit the scope of user who run the docker image
-RUN adduser -D user
+# Ставим базовые тулзы для сборки некоторых зависимостей (если понадобятся)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-USER user
+# Ставим зависимости
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+ && pip install --no-cache-dir gunicorn psycopg2-binary
+
+# Копируем код
+COPY . .
+
+# Запускаем gunicorn (порт 8000 должен совпадать с values.yaml)
+CMD ["gunicorn","app.wsgi:application","--bind","0.0.0.0:8000"]
