@@ -48,24 +48,32 @@ jobs:
           which helm || (curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash)
           which yc || (curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash && echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH)
 
-      # <-- фикс: экспортируем KUBECONFIG в ЭТОМ ЖЕ шаге; если файла нет, используем секрет
-      - name: Use kubeconfig
+      # УСТАНАВЛИВАЕМ KUBECONFIG ДЛЯ ВСЕХ ДАЛЬНЕЙШИХ ШАГОВ
+      - name: Prepare kubeconfig (persist to $GITHUB_ENV)
         run: |
-          if [ -f "$HOME/kubeconfig" ]; then
-            echo "Using local kubeconfig at $HOME/kubeconfig"
-            export KUBECONFIG="$HOME/kubeconfig"
+          # пробуем локальный kubeconfig пользователя ubuntu
+          if [ -f "/home/ubuntu/kubeconfig" ]; then
+            K="/home/ubuntu/kubeconfig"
+            echo "Using /home/ubuntu/kubeconfig"
+          elif [ -f "$HOME/kubeconfig" ]; then
+            K="$HOME/kubeconfig"
+            echo "Using $HOME/kubeconfig"
           else
-            echo "Local kubeconfig not found, using secret KUBE_CONFIG_B64"
+            echo "Local kubeconfig not found, decode secret"
             echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 -d > kubeconfig
-            export KUBECONFIG="$PWD/kubeconfig"
+            K="$PWD/kubeconfig"
           fi
-          kubectl cluster-info
+          # делаем доступным для следующих шагов
+          echo "KUBECONFIG=$K" >> $GITHUB_ENV
+          # sanity-check
+          kubectl config view >/dev/null
           kubectl get nodes
-        shell: bash
 
       - name: Configure yc SA key (from base64)
         run: |
-          if [ -f "$HOME/sa-key.json" ]; then
+          if [ -f "/home/ubuntu/sa-key.json" ]; then
+            yc config set service-account-key "/home/ubuntu/sa-key.json"
+          elif [ -f "$HOME/sa-key.json" ]; then
             yc config set service-account-key "$HOME/sa-key.json"
           else
             echo "${{ secrets.YC_SA_KEY_JSON_B64 }}" | base64 -d > sa-key.json
