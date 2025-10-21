@@ -14,23 +14,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install yc CLI
         run: |
           curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
           echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
-
       - name: Configure yc SA key (from base64)
         run: |
           echo "${{ secrets.YC_SA_KEY_JSON_B64 }}" | base64 -d > sa-key.json
           yc config set service-account-key sa-key.json
           yc config set token ""
-
       - name: Docker login to YCR (IAM)
         run: |
           TOKEN=$(yc iam create-token)
           echo "$TOKEN" | docker login cr.yandex -u iam --password-stdin
-
       - name: Build & Push
         env:
           TAG: ${{ github.ref_name }}
@@ -42,29 +38,30 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, srv]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install yc CLI
+      - name: Install kubectl & helm & yc
         run: |
-          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+          which kubectl || (sudo apt-get update && sudo apt-get install -y kubectl)
+          which helm || (curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash)
+          which yc || (curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash && echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH)
 
-      - name: Setup kubectl & helm
+      - name: Use local kubeconfig
         run: |
-          sudo apt-get update && sudo apt-get install -y kubectl
-          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-      - name: Kubeconfig
-        run: |
-          echo "${{ secrets.KUBE_CONFIG_B64 }}" | base64 -d > kubeconfig
-          echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENV
+          test -f "$HOME/kubeconfig" || { echo "no kubeconfig at ~/kubeconfig"; exit 1; }
+          echo "KUBECONFIG=$HOME/kubeconfig" >> $GITHUB_ENV
+          kubectl get nodes
 
       - name: Configure yc SA key (from base64)
         run: |
-          echo "${{ secrets.YC_SA_KEY_JSON_B64 }}" | base64 -d > sa-key.json
-          yc config set service-account-key sa-key.json
+          if [ -f "$HOME/sa-key.json" ]; then
+            yc config set service-account-key "$HOME/sa-key.json"
+          else
+            echo "${{ secrets.YC_SA_KEY_JSON_B64 }}" | base64 -d > sa-key.json
+            yc config set service-account-key sa-key.json
+          fi
           yc config set token ""
 
       - name: Ensure namespace
