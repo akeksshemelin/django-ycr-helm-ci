@@ -5,18 +5,23 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Ставим базовые тулзы для сборки некоторых зависимостей (если понадобятся)
+# Системные зависимости для сборки/рантайма psycopg2 и др.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential \
+      libpq-dev \
+      libpq5 \
+      python3-dev \
+      pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Ставим зависимости
+# Обновим pip и поставим зависимости проекта
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
- && pip install --no-cache-dir gunicorn psycopg2-binary
+RUN python -m pip install --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt \
+ && pip install --no-cache-dir gunicorn
 
-# Копируем код
+# Кладём код
 COPY . .
 
-# Запускаем gunicorn (порт 8000 должен совпадать с values.yaml)
+# Приложение слушает 8000 (совпадает с values.yaml)
 CMD ["gunicorn","app.wsgi:application","--bind","0.0.0.0:8000"]
