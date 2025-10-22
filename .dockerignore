@@ -1,10 +1,9 @@
+.git
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.log
+*.py[cod]
+*.sqlite3
 .env
 venv/
-.git
+.vscode/
+.idea/
 .gitignore
-Dockerfile.ycr-test
